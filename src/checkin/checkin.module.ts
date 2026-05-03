@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { CheckinController } from './checkin.controller';
+import { CheckinService } from './checkin.service';
+import { Participant } from '../participants/participant.entity';
+import { Event } from '../events/event.entity';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Participant, Event])],
+  controllers: [CheckinController],
+  providers: [CheckinService],
+})
+export class CheckinModule {}
