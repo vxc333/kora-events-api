@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { ILike, IsNull, Not, Repository } from 'typeorm';
 import { Participant, ParticipantStatus } from '../participants/participant.entity';
 import { Event } from '../events/event.entity';
 import { CheckinByCpfDto } from './dto/checkin-by-cpf.dto';
+import { CheckinByNameDto } from './dto/checkin-by-name.dto';
 
 @Injectable()
 export class CheckinService {
@@ -47,6 +48,31 @@ export class CheckinService {
       ?? participants.find((p) => p.status !== ParticipantStatus.CANCELLED);
 
     if (!participant) throw new NotFoundException('Participante não encontrado com este CPF');
+
+    if (participant.checkedInAt) {
+      const time = participant.checkedInAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      throw new ConflictException(`Participante já realizou check-in às ${time}`);
+    }
+
+    participant.checkedInAt = new Date();
+    return this.participantRepo.save(participant);
+  }
+
+  async checkinByName(dto: CheckinByNameDto, operatorId: string): Promise<Participant> {
+    const event = await this.eventRepo.findOne({ where: { id: dto.eventId, organizerId: operatorId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+
+    const matches = await this.participantRepo.find({
+      where: { eventId: dto.eventId, name: ILike(`%${dto.name}%`), status: Not(ParticipantStatus.CANCELLED) },
+    });
+
+    if (matches.length === 0) throw new NotFoundException('Nenhum participante encontrado com este nome');
+    if (matches.length > 1) {
+      const names = matches.map((p) => p.name).join(', ');
+      throw new BadRequestException(`Nome ambíguo — ${matches.length} participantes encontrados: ${names}. Seja mais específico.`);
+    }
+
+    const participant = matches[0];
 
     if (participant.checkedInAt) {
       const time = participant.checkedInAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

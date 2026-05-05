@@ -10,14 +10,18 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { User } from '../users/user.entity';
 import { ParticipantsService } from './participants.service';
 import { RegisterParticipantDto } from './dto/register-participant.dto';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
@@ -46,6 +50,21 @@ export class ParticipantsController {
     @Query() query: ListParticipantsDto,
   ) {
     return this.participantsService.findAll(eventId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('export')
+  @ApiOperation({ summary: 'Exportar participantes em CSV' })
+  async exportCsv(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const csv = await this.participantsService.exportCsv(eventId, user.id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="participantes-${eventId}.csv"`);
+    res.send('﻿' + csv); // BOM para Excel abrir com encoding correto
   }
 
   @UseGuards(JwtAuthGuard)

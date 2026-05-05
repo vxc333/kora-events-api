@@ -156,6 +156,40 @@ export class ParticipantsService {
     return this.participantRepo.save(participant);
   }
 
+  async exportCsv(eventId: string, userId: string): Promise<string> {
+    const event = await this.participantRepo.manager
+      .getRepository('Event')
+      .findOne({ where: { id: eventId, organizerId: userId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+
+    const participants = await this.participantRepo.find({
+      where: { eventId },
+      order: { registeredAt: 'ASC' },
+      relations: ['ticket'],
+    });
+
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const header = 'Nome,Email,CPF,Telefone,Ingresso,Status,Check-in';
+    const rows = participants.map((p) =>
+      [
+        escape(p.name),
+        escape(p.email),
+        escape(p.cpf),
+        escape(p.phone),
+        escape(p.ticket?.name ?? null),
+        escape(p.status),
+        escape(p.checkedInAt ? p.checkedInAt.toLocaleString('pt-BR') : null),
+      ].join(','),
+    );
+
+    return [header, ...rows].join('\n');
+  }
+
   async importCsv(
     eventId: string,
     rows: Array<{ name: string; email: string; cpf?: string; ticketId?: string }>,
