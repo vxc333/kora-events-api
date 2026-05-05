@@ -104,6 +104,10 @@ export class CertificatesService {
       ? [{ text: `com carga horária de ${event.workloadHours} horas`, alignment: 'center', color: '#666', margin: [0, 0, 0, 16] }]
       : [];
 
+    const cpfLine = participant.cpf
+      ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, color: '#888', margin: [0, 0, 0, 4] }]
+      : [];
+
     if (event.certificateTemplate === CertificateTemplate.LANDSCAPE) {
       const workloadInfo = event.workloadHours != null ? `  ·  ${event.workloadHours}h` : '';
       return {
@@ -120,6 +124,7 @@ export class CertificatesService {
                   { text: 'CERTIFICADO DE PARTICIPAÇÃO', fontSize: 10, bold: true, color: '#555', margin: [0, 0, 0, 12] },
                   { text: 'Certificamos que', fontSize: 10, color: '#888', margin: [0, 0, 0, 4] },
                   { text: participant.name, fontSize: 26, bold: true, color, margin: [0, 0, 0, 12] },
+                  ...cpfLine,
                   { text: 'participou do evento', fontSize: 10, color: '#888', margin: [0, 0, 0, 4] },
                   { text: event.title, fontSize: 14, bold: true, color: '#1a1a2e', margin: [0, 0, 0, 6] },
                   { text: `${dateStr}${workloadInfo}`, fontSize: 10, color: '#666' },
@@ -159,7 +164,8 @@ export class CertificatesService {
             : [{ text: '', margin: [0, 20, 0, 0] }]),
           { text: 'CERTIFICADO', fontSize: 9, bold: true, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 16] },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 435, y2: 0, lineWidth: 1, lineColor: color }], margin: [0, 0, 0, 40] },
-          { text: participant.name, fontSize: 32, bold: true, color: '#1a1a2e', alignment: 'center', margin: [0, 0, 0, 24] },
+          { text: participant.name, fontSize: 32, bold: true, color: '#1a1a2e', alignment: 'center', margin: [0, 0, 0, 8] },
+          ...(participant.cpf ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 16] }] : [{ text: '', margin: [0, 0, 0, 24] }]),
           { text: 'participou de', fontSize: 11, color: '#999', alignment: 'center', margin: [0, 0, 0, 8] },
           { text: event.title, fontSize: 16, bold: true, color: '#1a1a2e', alignment: 'center', margin: [0, 0, 0, 8] },
           ...workloadText,
@@ -179,7 +185,8 @@ export class CertificatesService {
         { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 475, y2: 0, lineWidth: 3, lineColor: color }], margin: [0, 0, 0, 30] },
         { text: 'CERTIFICADO DE PARTICIPAÇÃO', fontSize: 18, bold: true, alignment: 'center', color: '#1a1a2e', margin: [0, 0, 0, 32] },
         { text: 'Certificamos que', alignment: 'center', color: '#888', margin: [0, 0, 0, 8] },
-        { text: participant.name, fontSize: 28, bold: true, alignment: 'center', color, margin: [0, 0, 0, 16] },
+        { text: participant.name, fontSize: 28, bold: true, alignment: 'center', color, margin: [0, 0, 0, 8] },
+        ...(participant.cpf ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, alignment: 'center', color: '#bbb', margin: [0, 0, 0, 8] }] : [{ text: '', margin: [0, 0, 0, 8] }]),
         { text: 'participou do evento', alignment: 'center', color: '#888', margin: [0, 0, 0, 8] },
         { text: event.title, fontSize: 16, bold: true, alignment: 'center', color: '#1a1a2e', margin: [0, 0, 0, 8] },
         { text: `realizado em ${dateStr}`, alignment: 'center', color: '#666', margin: [0, 0, 0, 4] },

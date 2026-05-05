@@ -49,6 +49,9 @@ export class Participant {
   @Column({ nullable: true, type: 'varchar' })
   cpf: string | null;
 
+  @Column({ nullable: true, type: 'varchar' })
+  phone: string | null;
+
   @Column({
     type: 'enum',
     enum: ParticipantStatus,

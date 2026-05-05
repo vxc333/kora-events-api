@@ -26,7 +26,7 @@ const mockCoupon: Coupon = {
 const mockParticipant: Participant = {
   id: 'part-uuid-1', eventId: 'evt-uuid-1', event: {} as never,
   ticketId: 'tkt-uuid-1', ticket: mockTicket, couponId: null,
-  name: 'João da Silva', email: 'joao@example.com', cpf: null,
+  name: 'João da Silva', email: 'joao@example.com', cpf: null, phone: null,
   status: ParticipantStatus.PENDING,
   qrToken: 'mock-qr-token-uuid', checkedInAt: null, certificateReleased: false,
   registeredAt: new Date(), updatedAt: new Date(),
@@ -69,11 +69,13 @@ describe('ParticipantsService', () => {
     couponUsageRepo = module.get(getRepositoryToken(CouponUsage));
   });
 
+  const baseDto = { name: 'João', email: 'joao@example.com', cpf: '529.982.247-25', phone: '(11) 91234-5678' };
+
   describe('register', () => {
     it('should throw 409 PARTICIPANT_ALREADY_REGISTERED when email already exists for event', async () => {
       participantRepo.findOne.mockResolvedValue(mockParticipant);
       await expect(
-        service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com' }),
+        service.register('evt-uuid-1', { ...baseDto }),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -81,7 +83,7 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       ticketRepo.findOne.mockResolvedValue({ ...mockTicket, quantity: 10, quantitySold: 10 });
       try {
-        await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', ticketId: 'tkt-uuid-1' });
+        await service.register('evt-uuid-1', { ...baseDto, ticketId: 'tkt-uuid-1' });
       } catch (e: unknown) {
         expect((e as HttpException).getStatus()).toBe(409);
         expect(((e as HttpException).getResponse() as { code: string }).code).toBe('TICKET_SOLD_OUT');
@@ -95,7 +97,7 @@ describe('ParticipantsService', () => {
       participantRepo.save.mockResolvedValue({ ...mockParticipant });
       ticketRepo.save.mockResolvedValue({ ...mockTicket, quantitySold: 6 });
 
-      await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', ticketId: 'tkt-uuid-1' });
+      await service.register('evt-uuid-1', { ...baseDto, ticketId: 'tkt-uuid-1' });
       expect(ticketRepo.save).toHaveBeenCalledWith(expect.objectContaining({ quantitySold: 6 }));
     });
 
@@ -103,7 +105,7 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       participantRepo.create.mockReturnValue({ ...mockParticipant, ticketId: null });
       participantRepo.save.mockResolvedValue({ ...mockParticipant, ticketId: null });
-      await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com' });
+      await service.register('evt-uuid-1', { ...baseDto });
       expect(ticketRepo.findOne).not.toHaveBeenCalled();
     });
 
@@ -111,7 +113,7 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       participantRepo.create.mockReturnValue({ ...mockParticipant });
       participantRepo.save.mockResolvedValue({ ...mockParticipant });
-      await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com' });
+      await service.register('evt-uuid-1', { ...baseDto });
       expect(participantRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ qrToken: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) }),
       );
@@ -123,7 +125,7 @@ describe('ParticipantsService', () => {
       participantRepo.create.mockReturnValue({ ...mockParticipant });
       participantRepo.save.mockResolvedValue({ ...mockParticipant });
       ticketRepo.save.mockResolvedValue({ ...mockTicket, quantitySold: 10000 });
-      await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', ticketId: 'tkt-uuid-1' });
+      await service.register('evt-uuid-1', { ...baseDto, ticketId: 'tkt-uuid-1' });
       expect(participantRepo.save).toHaveBeenCalled();
     });
 
@@ -136,7 +138,7 @@ describe('ParticipantsService', () => {
       couponUsageRepo.create.mockReturnValue({} as CouponUsage);
       couponUsageRepo.save.mockResolvedValue({} as CouponUsage);
 
-      await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', couponCode: 'KORA10' });
+      await service.register('evt-uuid-1', { ...baseDto, couponCode: 'KORA10' });
 
       expect(couponRepo.save).toHaveBeenCalledWith(expect.objectContaining({ usedCount: 1 }));
       expect(couponUsageRepo.save).toHaveBeenCalled();
@@ -146,7 +148,7 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       couponRepo.findOne.mockResolvedValue({ ...mockCoupon, isActive: false });
       try {
-        await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', couponCode: 'KORA10' });
+        await service.register('evt-uuid-1', { ...baseDto, couponCode: 'KORA10' });
       } catch (e: unknown) {
         expect((e as HttpException).getStatus()).toBe(422);
         expect(((e as HttpException).getResponse() as { code: string }).code).toBe('COUPON_INACTIVE');
@@ -157,7 +159,7 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       couponRepo.findOne.mockResolvedValue({ ...mockCoupon, maxUses: 10, usedCount: 10 });
       try {
-        await service.register('evt-uuid-1', { name: 'João', email: 'joao@example.com', couponCode: 'KORA10' });
+        await service.register('evt-uuid-1', { ...baseDto, couponCode: 'KORA10' });
       } catch (e: unknown) {
         expect((e as HttpException).getStatus()).toBe(422);
         expect(((e as HttpException).getResponse() as { code: string }).code).toBe('COUPON_LIMIT_REACHED');

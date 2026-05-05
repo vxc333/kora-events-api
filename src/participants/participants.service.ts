@@ -79,6 +79,7 @@ export class ParticipantsService {
       name: dto.name,
       email: dto.email,
       cpf: dto.cpf ?? null,
+      phone: dto.phone ?? null,
       ticketId: dto.ticketId ?? null,
       couponId,
       qrToken: randomUUID(),

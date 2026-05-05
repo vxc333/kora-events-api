@@ -18,6 +18,7 @@ const mockParticipant: Participant = {
   name: 'João Silva',
   email: 'joao@example.com',
   cpf: null,
+  phone: null,
   status: ParticipantStatus.CONFIRMED,
   qrToken: 'abc-token-123',
   checkedInAt: null,

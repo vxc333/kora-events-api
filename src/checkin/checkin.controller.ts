@@ -1,9 +1,10 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CheckinService } from './checkin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../users/user.entity';
+import { CheckinByCpfDto } from './dto/checkin-by-cpf.dto';
 
 @ApiTags('Checkin')
 @Controller()
@@ -18,6 +19,18 @@ export class CheckinController {
   @ApiResponse({ status: 409, description: 'Participante já fez check-in' })
   checkin(@Param('token') token: string) {
     return this.checkinService.checkin(token);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('checkin/by-cpf')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Realiza check-in manual via CPF (operador autenticado)' })
+  @ApiResponse({ status: 200, description: 'Check-in realizado com sucesso' })
+  @ApiResponse({ status: 404, description: 'Participante não encontrado' })
+  @ApiResponse({ status: 409, description: 'Participante já fez check-in' })
+  checkinByCpf(@Body() dto: CheckinByCpfDto, @CurrentUser() user: User) {
+    return this.checkinService.checkinByCpf(dto, user.id);
   }
 
   @UseGuards(JwtAuthGuard)
