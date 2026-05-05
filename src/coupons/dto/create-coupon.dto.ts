@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -35,4 +36,9 @@ export class CreateCouponDto {
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
+
+  @ApiPropertyOptional({ example: true, description: 'Ativo por padrão' })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

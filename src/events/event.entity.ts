@@ -100,6 +100,9 @@ export class Event {
   })
   certificateTemplate: CertificateTemplate;
 
+  @Column({ type: 'text', nullable: true })
+  certificateBodyText: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   pageBlocks: object[] | null;
 

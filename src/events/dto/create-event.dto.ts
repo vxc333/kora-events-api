@@ -92,6 +92,11 @@ export class CreateEventDto {
   @IsEnum(CertificateTemplate)
   certificateTemplate?: CertificateTemplate;
 
+  @ApiPropertyOptional({ description: 'Texto do corpo do certificado (suporta variáveis {{nome}}, {{evento}}, {{data}}, etc.)' })
+  @IsOptional()
+  @IsString()
+  certificateBodyText?: string;
+
   @ApiPropertyOptional({ description: 'Blocos da landing page (page builder)' })
   @IsOptional()
   pageBlocks?: object[];
