@@ -8,12 +8,13 @@ import { Event, CertificateTemplate } from '../events/event.entity';
 import { CertificateSigner } from '../certificate-signers/certificate-signer.entity';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfmake = require('pdfmake');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Helvetica = require('pdfmake/standard-fonts/Helvetica');
+const puppeteer = require('puppeteer');
 
-pdfmake.addFonts(Helvetica);
-pdfmake.setUrlAccessPolicy(() => false);
+const GOOGLE_FONTS = `
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=Dancing+Script:wght@600&display=block" rel="stylesheet">
+`;
 
 @Injectable()
 export class CertificatesService {
@@ -56,13 +57,275 @@ export class CertificatesService {
       }
     }
 
+    const pdf = await this.buildAndRenderPdf(participant, event, signers);
+    return { pdf, slug: event.slug };
+  }
+
+  async generateByParticipantId(participantId: string): Promise<{ pdf: Buffer; slug: string }> {
+    const participant = await this.participantRepo.findOne({ where: { id: participantId } });
+    if (!participant) throw new NotFoundException('Participante não encontrado');
+
+    const event = await this.eventRepo.findOne({ where: { id: participant.eventId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+
+    const signers = await this.signerRepo.find({
+      where: { eventId: participant.eventId },
+      order: { displayOrder: 'ASC' },
+    });
+
+    const pdf = await this.buildAndRenderPdf(participant, event, signers);
+    return { pdf, slug: event.slug };
+  }
+
+  private async buildAndRenderPdf(
+    participant: Participant,
+    event: Event,
+    signers: CertificateSigner[],
+  ): Promise<Buffer> {
     const logoData = this.loadImageAsBase64(event.logoUrl);
     const signatureImages = signers.map((s) => this.loadImageAsBase64(s.signatureUrl));
-    const docDefinition = this.buildDocDefinition(participant, event, signers, logoData, signatureImages);
+    const isLandscape = event.certificateTemplate === CertificateTemplate.LANDSCAPE;
+    const html = this.buildCertHtml(participant, event, signers, logoData, signatureImages);
+    return this.renderHtmlToPdf(html, isLandscape);
+  }
 
-    const doc = pdfmake.createPdf(docDefinition);
-    const pdf = await doc.getBuffer();
-    return { pdf, slug: event.slug };
+  private async renderHtmlToPdf(html: string, landscape: boolean): Promise<Buffer> {
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      await page.evaluateHandle(() => document.fonts.ready);
+      const pdf = await page.pdf({
+        format: 'A4',
+        landscape,
+        printBackground: true,
+        margin: { top: '0', right: '0', bottom: '0', left: '0' },
+        scale: 96 / 72, // HTML designed at 72 DPI (PDF points); Puppeteer renders at 96 DPI CSS pixels
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  private buildCertHtml(
+    participant: Participant,
+    event: Event,
+    signers: CertificateSigner[],
+    logoData: string | undefined,
+    signatureImages: (string | undefined)[],
+  ): string {
+    const color = event.primaryColor || '#5B21B6';
+    const dateStr = new Date(event.startDate).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+    const code = participant.qrToken.substring(0, 8).toUpperCase();
+
+    const defaultBody = event.workloadHours
+      ? `Certificamos que {{nome}} participou de {{evento}}, realizado em {{data}}, com carga horária de {{carga_horaria}}.`
+      : `Certificamos que {{nome}} participou de {{evento}}, realizado em {{data}}.`;
+    const bodyTemplate = event.certificateBodyText || defaultBody;
+
+    const bodyHtml = this.substituteVars(bodyTemplate, {
+      nome: `<span style="font-weight:700;color:${color};letter-spacing:-0.01em;">${this.escape(participant.name)}</span>`,
+      cpf: participant.cpf ? `<span style="font-family:monospace;">${this.escape(participant.cpf)}</span>` : '',
+      email: this.escape(participant.email),
+      evento: `<span style="font-weight:600;">${this.escape(event.title)}</span>`,
+      data: dateStr,
+      carga_horaria: event.workloadHours ? `${event.workloadHours} horas` : '',
+      codigo: `<span style="font-family:monospace;opacity:0.7;">${code}</span>`,
+    });
+
+    const logoHtml = logoData
+      ? `<img src="${logoData}" style="height:60px;object-fit:contain;display:block;margin:0 auto 20px;">`
+      : '';
+
+    if (event.certificateTemplate === CertificateTemplate.LANDSCAPE) {
+      return this.buildLandscapeHtml(color, logoHtml, bodyHtml, signers, signatureImages, code);
+    }
+    if (event.certificateTemplate === CertificateTemplate.MINIMALIST) {
+      return this.buildMinimalistHtml(color, logoHtml, bodyHtml, signers, signatureImages, code);
+    }
+    return this.buildDefaultHtml(color, logoHtml, bodyHtml, signers, signatureImages, code);
+  }
+
+  private buildDefaultHtml(
+    color: string,
+    logoHtml: string,
+    bodyHtml: string,
+    signers: CertificateSigner[],
+    signatureImages: (string | undefined)[],
+    code: string,
+  ): string {
+    const signersHtml = this.buildPortraitSignersHtml(signers, signatureImages);
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  ${GOOGLE_FONTS}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 595px; height: 842px; overflow: hidden; background: white; }
+    @page { size: A4 portrait; margin: 0; }
+  </style>
+</head>
+<body>
+  <div style="width:595px;height:842px;background:#fff;padding:60px;font-family:Georgia,serif;display:flex;flex-direction:column;">
+    ${logoHtml}
+    <div style="height:4px;background:${color};margin-bottom:32px;"></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+      <div style="font-size:11px;font-family:'DM Sans',sans-serif;letter-spacing:0.15em;color:#888;text-transform:uppercase;margin-bottom:28px;">
+        Certificado de Participação
+      </div>
+      <div style="font-size:16px;color:#333;line-height:1.8;font-family:'DM Sans',sans-serif;max-width:420px;margin-bottom:24px;">
+        ${bodyHtml}
+      </div>
+      <div style="font-size:9px;color:#ccc;font-family:'DM Sans',sans-serif;letter-spacing:0.1em;margin-top:12px;">
+        CÓDIGO DE VALIDAÇÃO: ${code}
+      </div>
+    </div>
+    <div style="height:1px;background:${color};opacity:0.3;margin-bottom:24px;"></div>
+    ${signersHtml}
+  </div>
+</body>
+</html>`;
+  }
+
+  private buildLandscapeHtml(
+    color: string,
+    logoHtml: string,
+    bodyHtml: string,
+    signers: CertificateSigner[],
+    signatureImages: (string | undefined)[],
+    code: string,
+  ): string {
+    const logoSection = logoHtml ? `<div style="margin-bottom:16px;">${logoHtml}</div>` : '';
+    const signersHtml = this.buildLandscapeSignersHtml(signers, signatureImages);
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  ${GOOGLE_FONTS}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 842px; height: 595px; overflow: hidden; background: white; }
+    @page { size: A4 landscape; margin: 0; }
+  </style>
+</head>
+<body>
+  <div style="width:842px;height:595px;background:#fff;padding:50px 60px;font-family:Georgia,serif;display:flex;align-items:stretch;">
+    <div style="flex:0 0 55%;display:flex;flex-direction:column;justify-content:center;padding-right:40px;">
+      ${logoSection}
+      <div style="font-size:9px;font-family:'DM Sans',sans-serif;letter-spacing:0.15em;color:#888;text-transform:uppercase;margin-bottom:20px;">
+        Certificado de Participação
+      </div>
+      <div style="font-size:14px;color:#333;line-height:1.85;font-family:'DM Sans',sans-serif;margin-bottom:16px;">
+        ${bodyHtml}
+      </div>
+      <div style="font-size:8px;color:#bbb;margin-top:14px;font-family:'DM Sans',sans-serif;letter-spacing:0.08em;">
+        Código: ${code}
+      </div>
+    </div>
+    <div style="width:1px;background:${color};flex-shrink:0;"></div>
+    <div style="flex:1;padding-left:40px;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:9px;color:#888;font-family:'DM Sans',sans-serif;margin-bottom:24px;letter-spacing:0.1em;text-transform:uppercase;">
+        Assinaturas
+      </div>
+      ${signersHtml}
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
+  private buildMinimalistHtml(
+    color: string,
+    logoHtml: string,
+    bodyHtml: string,
+    signers: CertificateSigner[],
+    signatureImages: (string | undefined)[],
+    code: string,
+  ): string {
+    const logoSection = logoHtml ? `<div style="margin-bottom:20px;">${logoHtml}</div>` : '';
+    const signersHtml = this.buildPortraitSignersHtml(signers, signatureImages);
+    const signersWrapper = signersHtml
+      ? `<div style="margin-bottom:24px;">${signersHtml}</div>`
+      : `<div style="height:60px;"></div>`;
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  ${GOOGLE_FONTS}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 595px; height: 842px; overflow: hidden; background: white; }
+    @page { size: A4 portrait; margin: 0; }
+  </style>
+</head>
+<body>
+  <div style="width:595px;height:842px;background:#fff;padding:80px;font-family:Georgia,serif;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+    ${logoSection}
+    <div style="font-size:10px;font-family:'DM Sans',sans-serif;letter-spacing:0.2em;color:#aaa;text-transform:uppercase;margin-bottom:20px;">
+      Certificado
+    </div>
+    <div style="height:1px;background:${color};width:100%;margin-bottom:40px;"></div>
+    <div style="font-size:17px;color:#333;line-height:1.9;font-family:'DM Sans',sans-serif;max-width:380px;margin-bottom:48px;">
+      ${bodyHtml}
+    </div>
+    ${signersWrapper}
+    <div style="font-size:9px;color:#ccc;font-family:'DM Sans',sans-serif;letter-spacing:0.12em;">Código ${code}</div>
+  </div>
+</body>
+</html>`;
+  }
+
+  private buildPortraitSignersHtml(
+    signers: CertificateSigner[],
+    signatureImages: (string | undefined)[],
+  ): string {
+    if (signers.length === 0) return '';
+    return `<div style="display:flex;justify-content:center;gap:48px;">
+      ${signers.slice(0, 3).map((s, i) => this.buildSignerCard(s, signatureImages[i])).join('')}
+    </div>`;
+  }
+
+  private buildLandscapeSignersHtml(
+    signers: CertificateSigner[],
+    signatureImages: (string | undefined)[],
+  ): string {
+    if (signers.length === 0) return '';
+    return `<div style="display:flex;flex-direction:column;gap:20px;">
+      ${signers.slice(0, 3).map((s, i) => this.buildSignerCard(s, signatureImages[i])).join('')}
+    </div>`;
+  }
+
+  private buildSignerCard(signer: CertificateSigner, signatureImage: string | undefined): string {
+    const signatureContent = signatureImage
+      ? `<img src="${signatureImage}" style="height:40px;max-width:120px;object-fit:contain;display:block;margin:0 auto 4px;">`
+      : `<div style="font-family:'Dancing Script',cursive;font-size:22px;color:#333;font-weight:600;margin-bottom:4px;">${this.escape(signer.name)}</div>`;
+    return `<div style="text-align:center;min-width:100px;">
+      ${signatureContent}
+      <div style="height:0.5px;background:#555;margin-bottom:5px;"></div>
+      <div style="font-size:10px;font-weight:bold;color:#1a1a2e;font-family:'DM Sans',sans-serif;">${this.escape(signer.name)}</div>
+      <div style="font-size:9px;color:#666;font-family:'DM Sans',sans-serif;">${this.escape(signer.title)}</div>
+    </div>`;
+  }
+
+  private substituteVars(template: string, vars: Record<string, string>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
+  }
+
+  private escape(str: string): string {
+    return (str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   private loadImageAsBase64(url: string | null): string | undefined {
@@ -75,127 +338,5 @@ export class CertificatesService {
     } catch {
       return undefined;
     }
-  }
-
-  private buildDocDefinition(
-    participant: Participant,
-    event: Event,
-    signers: CertificateSigner[],
-    logoData: string | undefined,
-    signatureImages: (string | undefined)[],
-  ) {
-    const color = event.primaryColor;
-    const dateStr = event.startDate.toLocaleDateString('pt-BR');
-    const code = participant.qrToken.substring(0, 8).toUpperCase();
-
-    const signerColumns = signers.map((s, i) => ({
-      stack: [
-        ...(signatureImages[i]
-          ? [{ image: signatureImages[i], width: 80, alignment: 'center', margin: [0, 0, 0, 4] }]
-          : [{ text: '', margin: [0, 36, 0, 4] }]),
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 100, y2: 0, lineWidth: 0.5, lineColor: '#555' }] },
-        { text: s.name, fontSize: 10, bold: true, alignment: 'center', margin: [0, 4, 0, 0] },
-        { text: s.title, fontSize: 9, alignment: 'center', color: '#666' },
-      ],
-      width: '*',
-    }));
-
-    const workloadLine = event.workloadHours != null
-      ? [{ text: `com carga horária de ${event.workloadHours} horas`, alignment: 'center', color: '#666', margin: [0, 0, 0, 16] }]
-      : [];
-
-    const cpfLine = participant.cpf
-      ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, color: '#888', margin: [0, 0, 0, 4] }]
-      : [];
-
-    if (event.certificateTemplate === CertificateTemplate.LANDSCAPE) {
-      const workloadInfo = event.workloadHours != null ? `  ·  ${event.workloadHours}h` : '';
-      return {
-        pageSize: 'A4',
-        pageOrientation: 'landscape',
-        pageMargins: [60, 50, 60, 50],
-        content: [
-          {
-            columns: [
-              {
-                width: '55%',
-                stack: [
-                  ...(logoData ? [{ image: logoData, width: 70, margin: [0, 0, 0, 16] }] : []),
-                  { text: 'CERTIFICADO DE PARTICIPAÇÃO', fontSize: 10, bold: true, color: '#555', margin: [0, 0, 0, 12] },
-                  { text: 'Certificamos que', fontSize: 10, color: '#888', margin: [0, 0, 0, 4] },
-                  { text: participant.name, fontSize: 26, bold: true, color, margin: [0, 0, 0, 12] },
-                  ...cpfLine,
-                  { text: 'participou do evento', fontSize: 10, color: '#888', margin: [0, 0, 0, 4] },
-                  { text: event.title, fontSize: 14, bold: true, color: '#1a1a2e', margin: [0, 0, 0, 6] },
-                  { text: `${dateStr}${workloadInfo}`, fontSize: 10, color: '#666' },
-                  { text: `Código: ${code}`, fontSize: 8, color: '#bbb', margin: [0, 16, 0, 0] },
-                ],
-              },
-              {
-                width: 1,
-                stack: [{ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 0, y2: 440, lineWidth: 1, lineColor: color }] }],
-                margin: [20, 0, 20, 0],
-              },
-              {
-                width: '*',
-                stack: [
-                  { text: 'Assinaturas', fontSize: 9, color: '#888', margin: [0, 0, 0, 20] },
-                  ...(signerColumns.length > 0 ? [{ columns: signerColumns }] : []),
-                ],
-                margin: [0, 60, 0, 0],
-              },
-            ],
-          },
-        ],
-        defaultStyle: { font: 'Helvetica', fontSize: 11 },
-      };
-    }
-
-    if (event.certificateTemplate === CertificateTemplate.MINIMALIST) {
-      const workloadText = event.workloadHours != null
-        ? [{ text: `${dateStr}  ·  ${event.workloadHours} horas`, fontSize: 11, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 60] }]
-        : [{ text: dateStr, fontSize: 11, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 60] }];
-      return {
-        pageSize: 'A4',
-        pageMargins: [80, 80, 80, 80],
-        content: [
-          ...(logoData
-            ? [{ image: logoData, width: 60, alignment: 'center', margin: [0, 0, 0, 40] }]
-            : [{ text: '', margin: [0, 20, 0, 0] }]),
-          { text: 'CERTIFICADO', fontSize: 9, bold: true, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 16] },
-          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 435, y2: 0, lineWidth: 1, lineColor: color }], margin: [0, 0, 0, 40] },
-          { text: participant.name, fontSize: 32, bold: true, color: '#1a1a2e', alignment: 'center', margin: [0, 0, 0, 8] },
-          ...(participant.cpf ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, color: '#aaa', alignment: 'center', margin: [0, 0, 0, 16] }] : [{ text: '', margin: [0, 0, 0, 24] }]),
-          { text: 'participou de', fontSize: 11, color: '#999', alignment: 'center', margin: [0, 0, 0, 8] },
-          { text: event.title, fontSize: 16, bold: true, color: '#1a1a2e', alignment: 'center', margin: [0, 0, 0, 8] },
-          ...workloadText,
-          ...(signerColumns.length > 0 ? [{ columns: signerColumns, margin: [0, 0, 0, 24] }] : []),
-          { text: `Código ${code}`, fontSize: 8, color: '#ccc', alignment: 'center' },
-        ],
-        defaultStyle: { font: 'Helvetica', fontSize: 11 },
-      };
-    }
-
-    // DEFAULT (portrait A4)
-    return {
-      pageSize: 'A4',
-      pageMargins: [60, 60, 60, 60],
-      content: [
-        ...(logoData ? [{ image: logoData, width: 80, alignment: 'center', margin: [0, 0, 0, 20] }] : []),
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 475, y2: 0, lineWidth: 3, lineColor: color }], margin: [0, 0, 0, 30] },
-        { text: 'CERTIFICADO DE PARTICIPAÇÃO', fontSize: 18, bold: true, alignment: 'center', color: '#1a1a2e', margin: [0, 0, 0, 32] },
-        { text: 'Certificamos que', alignment: 'center', color: '#888', margin: [0, 0, 0, 8] },
-        { text: participant.name, fontSize: 28, bold: true, alignment: 'center', color, margin: [0, 0, 0, 8] },
-        ...(participant.cpf ? [{ text: `CPF: ${participant.cpf}`, fontSize: 9, alignment: 'center', color: '#bbb', margin: [0, 0, 0, 8] }] : [{ text: '', margin: [0, 0, 0, 8] }]),
-        { text: 'participou do evento', alignment: 'center', color: '#888', margin: [0, 0, 0, 8] },
-        { text: event.title, fontSize: 16, bold: true, alignment: 'center', color: '#1a1a2e', margin: [0, 0, 0, 8] },
-        { text: `realizado em ${dateStr}`, alignment: 'center', color: '#666', margin: [0, 0, 0, 4] },
-        ...workloadLine,
-        { text: `Código de validação: ${code}`, fontSize: 9, alignment: 'center', color: '#bbb' },
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 475, y2: 0, lineWidth: 1, lineColor: color }], margin: [0, 40, 0, 20] },
-        ...(signerColumns.length > 0 ? [{ columns: signerColumns }] : []),
-      ],
-      defaultStyle: { font: 'Helvetica', fontSize: 11 },
-    };
   }
 }
