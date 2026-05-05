@@ -192,7 +192,7 @@ export class ParticipantsService {
 
   async importCsv(
     eventId: string,
-    rows: Array<{ name: string; email: string; cpf?: string; ticketId?: string }>,
+    rows: Array<{ name: string; email: string; phone?: string; cpf?: string; ticketId?: string }>,
   ): Promise<{ imported: number; failed: Array<{ line: number; reason: string }> }> {
     let imported = 0;
     const failed: Array<{ line: number; reason: string }> = [];
@@ -203,7 +203,8 @@ export class ParticipantsService {
         await this.register(eventId, {
           name: row.name,
           email: row.email,
-          cpf: row.cpf,
+          phone: row.phone!,
+          cpf: row.cpf!,
           ticketId: row.ticketId,
         });
         imported++;

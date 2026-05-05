@@ -15,10 +15,15 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../users/user.entity';
@@ -63,7 +68,10 @@ export class ParticipantsController {
   ) {
     const csv = await this.participantsService.exportCsv(eventId, user.id);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="participantes-${eventId}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="participantes-${eventId}.csv"`,
+    );
     res.send('﻿' + csv); // BOM para Excel abrir com encoding correto
   }
 
@@ -71,7 +79,10 @@ export class ParticipantsController {
   @ApiBearerAuth()
   @Post('csv')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Importar participantes via CSV (colunas: name, email, cpf, ticketId)' })
+  @ApiOperation({
+    summary:
+      'Importar participantes via CSV (colunas: name, email, cpf, ticketId)',
+  })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async importCsv(
@@ -85,9 +96,12 @@ export class ParticipantsController {
 
     const rows = dataLines.map((line) => {
       const values = line.split(',').map((v) => v.trim());
-      return Object.fromEntries(cols.map((col, i) => [col, values[i] || undefined])) as {
+      return Object.fromEntries(
+        cols.map((col, i) => [col, values[i] || undefined]),
+      ) as {
         name: string;
         email: string;
+        phone?: string;
         cpf?: string;
         ticketId?: string;
       };
@@ -112,7 +126,9 @@ export class ParticipantsController {
   @ApiBearerAuth()
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancelar inscrição (status → CANCELLED, libera vaga)' })
+  @ApiOperation({
+    summary: 'Cancelar inscrição (status → CANCELLED, libera vaga)',
+  })
   cancel(
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('id', ParseUUIDPipe) id: string,
