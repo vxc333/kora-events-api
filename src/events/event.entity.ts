@@ -100,6 +100,12 @@ export class Event {
   })
   certificateTemplate: CertificateTemplate;
 
+  @Column({ type: 'jsonb', nullable: true })
+  pageBlocks: object[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  pageSettings: object | null;
+
   @Column({ type: 'uuid' })
   organizerId: string;
 

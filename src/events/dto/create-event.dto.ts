@@ -91,4 +91,12 @@ export class CreateEventDto {
   @IsOptional()
   @IsEnum(CertificateTemplate)
   certificateTemplate?: CertificateTemplate;
+
+  @ApiPropertyOptional({ description: 'Blocos da landing page (page builder)' })
+  @IsOptional()
+  pageBlocks?: object[];
+
+  @ApiPropertyOptional({ description: 'Configurações visuais da landing page' })
+  @IsOptional()
+  pageSettings?: object;
 }
