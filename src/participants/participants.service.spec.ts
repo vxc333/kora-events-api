@@ -7,6 +7,8 @@ import { Participant, ParticipantStatus } from './participant.entity';
 import { Ticket } from '../tickets/ticket.entity';
 import { Coupon, DiscountType } from '../coupons/coupon.entity';
 import { CouponUsage } from '../coupons/coupon-usage.entity';
+import { MailService } from '../mail/mail.service';
+import { Event, EventStatus, CertificateTemplate } from '../events/event.entity';
 
 const mockTicket: Ticket = {
   id: 'tkt-uuid-1', name: 'Ingresso Padrão', description: null, price: 0,
@@ -39,6 +41,8 @@ describe('ParticipantsService', () => {
   let ticketRepo: jest.Mocked<Repository<Ticket>>;
   let couponRepo: jest.Mocked<Repository<Coupon>>;
   let couponUsageRepo: jest.Mocked<Repository<CouponUsage>>;
+  let mailService: jest.Mocked<MailService>;
+  let eventRepo: jest.Mocked<Repository<Event>>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +64,18 @@ describe('ParticipantsService', () => {
           provide: getRepositoryToken(CouponUsage),
           useValue: { create: jest.fn(), save: jest.fn() },
         },
+        {
+          provide: getRepositoryToken(Event),
+          useValue: { findOne: jest.fn() },
+        },
+        {
+          provide: MailService,
+          useValue: {
+            sendRegistrationConfirmation: jest.fn().mockResolvedValue(undefined),
+            sendCancellation: jest.fn().mockResolvedValue(undefined),
+            sendCertificateReleased: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -68,6 +84,8 @@ describe('ParticipantsService', () => {
     ticketRepo = module.get(getRepositoryToken(Ticket));
     couponRepo = module.get(getRepositoryToken(Coupon));
     couponUsageRepo = module.get(getRepositoryToken(CouponUsage));
+    mailService = module.get(MailService);
+    eventRepo = module.get(getRepositoryToken(Event));
   });
 
   const baseDto = { name: 'João', email: 'joao@example.com', cpf: '529.982.247-25', phone: '(11) 91234-5678' };
@@ -166,6 +184,32 @@ describe('ParticipantsService', () => {
         expect(((e as HttpException).getResponse() as { code: string }).code).toBe('COUPON_LIMIT_REACHED');
       }
     });
+
+    it('should send confirmation email after successful registration', async () => {
+      const mockEventData = { id: 'evt-uuid-1', title: 'Evento Teste', slug: 'evento-teste', startDate: new Date(), startTime: '09:00', location: 'SP' };
+      participantRepo.findOne.mockResolvedValue(null);
+      participantRepo.create.mockReturnValue({ ...mockParticipant });
+      participantRepo.save.mockResolvedValue({ ...mockParticipant });
+      eventRepo.findOne.mockResolvedValue(mockEventData as Event);
+
+      await service.register('evt-uuid-1', baseDto);
+
+      expect(mailService.sendRegistrationConfirmation).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'joao@example.com' }),
+        mockEventData,
+        null,
+      );
+    });
+
+    it('should not throw if sending confirmation email fails', async () => {
+      participantRepo.findOne.mockResolvedValue(null);
+      participantRepo.create.mockReturnValue({ ...mockParticipant });
+      participantRepo.save.mockResolvedValue({ ...mockParticipant });
+      eventRepo.findOne.mockResolvedValue({ id: 'evt-uuid-1' } as Event);
+      mailService.sendRegistrationConfirmation.mockRejectedValue(new Error('SMTP error'));
+
+      await expect(service.register('evt-uuid-1', baseDto)).resolves.toBeDefined();
+    });
   });
 
   describe('cancel', () => {
@@ -190,6 +234,22 @@ describe('ParticipantsService', () => {
       participantRepo.findOne.mockResolvedValue(null);
       await expect(service.cancel('evt-uuid-1', 'part-uuid-1')).rejects.toThrow(NotFoundException);
     });
+
+    it('should send cancellation email after cancelling', async () => {
+      const mockEventData = { id: 'evt-uuid-1', title: 'Evento Teste' };
+      participantRepo.findOne.mockResolvedValue({ ...mockParticipant });
+      ticketRepo.findOne.mockResolvedValue({ ...mockTicket, quantitySold: 5 });
+      participantRepo.save.mockResolvedValue({ ...mockParticipant, status: ParticipantStatus.CANCELLED });
+      ticketRepo.save.mockResolvedValue({ ...mockTicket, quantitySold: 4 });
+      eventRepo.findOne.mockResolvedValue(mockEventData as Event);
+
+      await service.cancel('evt-uuid-1', 'part-uuid-1');
+
+      expect(mailService.sendCancellation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'part-uuid-1' }),
+        mockEventData,
+      );
+    });
   });
 
   describe('findAll', () => {
@@ -210,6 +270,31 @@ describe('ParticipantsService', () => {
     it('should throw NotFoundException when not found', async () => {
       participantRepo.findOne.mockResolvedValue(null);
       await expect(service.findOne('evt-uuid-1', 'missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('update', () => {
+    it('should send certificate email when certificateReleased changes to true', async () => {
+      const mockEventData = { id: 'evt-uuid-1', title: 'Evento Teste' };
+      participantRepo.findOne.mockResolvedValue({ ...mockParticipant, certificateReleased: false });
+      participantRepo.save.mockResolvedValue({ ...mockParticipant, certificateReleased: true });
+      eventRepo.findOne.mockResolvedValue(mockEventData as Event);
+
+      await service.update('evt-uuid-1', 'part-uuid-1', { certificateReleased: true });
+
+      expect(mailService.sendCertificateReleased).toHaveBeenCalledWith(
+        expect.any(Object),
+        mockEventData,
+      );
+    });
+
+    it('should not send certificate email when certificateReleased was already true', async () => {
+      participantRepo.findOne.mockResolvedValue({ ...mockParticipant, certificateReleased: true });
+      participantRepo.save.mockResolvedValue({ ...mockParticipant, certificateReleased: true });
+
+      await service.update('evt-uuid-1', 'part-uuid-1', { certificateReleased: true });
+
+      expect(mailService.sendCertificateReleased).not.toHaveBeenCalled();
     });
   });
 });

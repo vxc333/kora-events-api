@@ -6,9 +6,14 @@ import { Participant } from './participant.entity';
 import { Ticket } from '../tickets/ticket.entity';
 import { Coupon } from '../coupons/coupon.entity';
 import { CouponUsage } from '../coupons/coupon-usage.entity';
+import { Event } from '../events/event.entity';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Participant, Ticket, Coupon, CouponUsage])],
+  imports: [
+    TypeOrmModule.forFeature([Participant, Ticket, Coupon, CouponUsage, Event]),
+    MailModule,
+  ],
   controllers: [ParticipantsController],
   providers: [ParticipantsService],
   exports: [ParticipantsService],

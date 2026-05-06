@@ -12,9 +12,11 @@ import { Participant, ParticipantStatus } from './participant.entity';
 import { Ticket } from '../tickets/ticket.entity';
 import { Coupon } from '../coupons/coupon.entity';
 import { CouponUsage } from '../coupons/coupon-usage.entity';
+import { Event } from '../events/event.entity';
 import { RegisterParticipantDto } from './dto/register-participant.dto';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { ListParticipantsDto } from './dto/list-participants.dto';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class ParticipantsService {
@@ -27,6 +29,9 @@ export class ParticipantsService {
     private readonly couponRepo: Repository<Coupon>,
     @InjectRepository(CouponUsage)
     private readonly couponUsageRepo: Repository<CouponUsage>,
+    @InjectRepository(Event)
+    private readonly eventRepo: Repository<Event>,
+    private readonly mailService: MailService,
   ) {}
 
   async register(eventId: string, dto: RegisterParticipantDto): Promise<Participant> {
@@ -35,8 +40,10 @@ export class ParticipantsService {
       throw new ConflictException({ message: 'Participante já inscrito neste evento', code: 'PARTICIPANT_ALREADY_REGISTERED' });
     }
 
+    let ticket: Ticket | null = null;
+
     if (dto.ticketId) {
-      const ticket = await this.ticketRepo.findOne({ where: { id: dto.ticketId, eventId } });
+      ticket = await this.ticketRepo.findOne({ where: { id: dto.ticketId, eventId } });
       if (!ticket) throw new NotFoundException('Ingresso não encontrado');
 
       if (ticket.quantity !== null && ticket.quantitySold >= ticket.quantity) {
@@ -93,6 +100,11 @@ export class ParticipantsService {
       );
     }
 
+    try {
+      const event = await this.eventRepo.findOne({ where: { id: eventId } });
+      if (event) await this.mailService.sendRegistrationConfirmation(saved, event, ticket);
+    } catch { /* silently ignore email errors */ }
+
     return saved;
   }
 
@@ -136,8 +148,18 @@ export class ParticipantsService {
 
   async update(eventId: string, participantId: string, dto: UpdateParticipantDto): Promise<Participant> {
     const participant = await this.findOne(eventId, participantId);
+    const wasCertReleased = participant.certificateReleased;
     Object.assign(participant, dto);
-    return this.participantRepo.save(participant);
+    const updated = await this.participantRepo.save(participant);
+
+    if (dto.certificateReleased && !wasCertReleased) {
+      try {
+        const event = await this.eventRepo.findOne({ where: { id: updated.eventId } });
+        if (event) await this.mailService.sendCertificateReleased(updated, event);
+      } catch { /* silently ignore email errors */ }
+    }
+
+    return updated;
   }
 
   async cancel(eventId: string, participantId: string): Promise<Participant> {
@@ -153,13 +175,18 @@ export class ParticipantsService {
     }
 
     participant.status = ParticipantStatus.CANCELLED;
-    return this.participantRepo.save(participant);
+    const cancelled = await this.participantRepo.save(participant);
+
+    try {
+      const event = await this.eventRepo.findOne({ where: { id: eventId } });
+      if (event) await this.mailService.sendCancellation(cancelled, event);
+    } catch { /* silently ignore email errors */ }
+
+    return cancelled;
   }
 
   async exportCsv(eventId: string, userId: string): Promise<string> {
-    const event = await this.participantRepo.manager
-      .getRepository('Event')
-      .findOne({ where: { id: eventId, organizerId: userId } });
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
     if (!event) throw new NotFoundException('Evento não encontrado');
 
     const participants = await this.participantRepo.find({
