@@ -55,6 +55,11 @@ export class CreateTicketDto {
   @IsBoolean()
   isHalfPrice?: boolean;
 
+  @ApiPropertyOptional({ default: false, description: 'Repassa a taxa da plataforma ao comprador' })
+  @IsOptional()
+  @IsBoolean()
+  feePassthrough?: boolean;
+
   @ApiPropertyOptional({ example: 'KORA10' })
   @IsOptional()
   @IsString()

@@ -69,7 +69,11 @@ export class TicketsService {
 
   private getEffectivePrice(ticket: Ticket): number {
     const base = Number(ticket.price);
-    return ticket.isHalfPrice ? base * 0.5 : base;
+    const afterHalf = ticket.isHalfPrice ? base * 0.5 : base;
+    if (ticket.feePassthrough && afterHalf > 0) {
+      return afterHalf + afterHalf * 0.05 + 0.99;
+    }
+    return afterHalf;
   }
 
   private async findTicketForEvent(eventId: string, ticketId: string): Promise<Ticket> {

@@ -44,6 +44,9 @@ export class Ticket {
   @Column({ default: false })
   isHalfPrice: boolean;
 
+  @Column({ default: false })
+  feePassthrough: boolean;
+
   @Column({ nullable: true, type: 'varchar' })
   discountCode: string | null;
 
