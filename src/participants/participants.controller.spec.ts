@@ -18,6 +18,8 @@ const mockParticipant: Participant = {
   qrToken: 'mock-qr-token-uuid',
   checkedInAt: null,
   certificateReleased: false,
+  reminderSent24h: false,
+  reminderSent1h: false,
   registeredAt: new Date(),
   updatedAt: new Date(),
 };

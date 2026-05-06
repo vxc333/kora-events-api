@@ -54,10 +54,13 @@ const mockParticipant: Participant = {
   name: 'João da Silva',
   email: 'joao@example.com',
   cpf: null,
+  phone: null,
   status: ParticipantStatus.CONFIRMED,
   qrToken: 'abc12345-0000-0000-0000-000000000000',
   checkedInAt: null,
   certificateReleased: false,
+  reminderSent24h: false,
+  reminderSent1h: false,
   registeredAt: new Date(),
   updatedAt: new Date(),
 };

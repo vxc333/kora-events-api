@@ -68,6 +68,12 @@ export class Participant {
   @Column({ default: false })
   certificateReleased: boolean;
 
+  @Column({ default: false })
+  reminderSent24h: boolean;
+
+  @Column({ default: false })
+  reminderSent1h: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   registeredAt: Date;
 

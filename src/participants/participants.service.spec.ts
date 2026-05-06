@@ -29,6 +29,7 @@ const mockParticipant: Participant = {
   name: 'João da Silva', email: 'joao@example.com', cpf: null, phone: null,
   status: ParticipantStatus.PENDING,
   qrToken: 'mock-qr-token-uuid', checkedInAt: null, certificateReleased: false,
+  reminderSent24h: false, reminderSent1h: false,
   registeredAt: new Date(), updatedAt: new Date(),
 };
 

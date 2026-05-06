@@ -23,6 +23,8 @@ const mockParticipant: Participant = {
   qrToken: 'abc-token-123',
   checkedInAt: null,
   certificateReleased: false,
+  reminderSent24h: false,
+  reminderSent1h: false,
   registeredAt: new Date(),
   updatedAt: new Date(),
 };
