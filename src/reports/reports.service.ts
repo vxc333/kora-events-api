@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from '../events/event.entity';
 import { Participant, ParticipantStatus } from '../participants/participant.entity';
+import { Ticket } from '../tickets/ticket.entity';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfmake = require('pdfmake');
@@ -20,6 +21,47 @@ export class ReportsService {
     @InjectRepository(Participant)
     private readonly participantRepo: Repository<Participant>,
   ) {}
+
+  async getFinancialSummary(organizerId: string) {
+    const events = await this.eventRepo.find({
+      where: { organizerId },
+      relations: ['tickets'],
+      order: { startDate: 'DESC' },
+    });
+
+    const extrato = events.map((event) => {
+      const tickets = (event.tickets ?? []) as unknown as Ticket[];
+
+      const receitaBruta = tickets.reduce((s, t) => s + t.price * t.quantitySold, 0);
+      const ingressosPagos = tickets
+        .filter((t) => t.price > 0)
+        .reduce((s, t) => s + t.quantitySold, 0);
+      const taxaPlataforma = receitaBruta > 0
+        ? receitaBruta * 0.05 + ingressosPagos * 0.99
+        : 0;
+
+      return {
+        eventId: event.id,
+        eventTitle: event.title,
+        eventDate: event.startDate,
+        eventStatus: event.status,
+        ingressosVendidos: tickets.reduce((s, t) => s + t.quantitySold, 0),
+        ingressosPagos,
+        receitaBruta,
+        taxaPlataforma,
+        valorRepassar: receitaBruta - taxaPlataforma,
+      };
+    });
+
+    return {
+      receitaBruta: extrato.reduce((s, e) => s + e.receitaBruta, 0),
+      taxaPlataforma: extrato.reduce((s, e) => s + e.taxaPlataforma, 0),
+      valorRepassar: extrato.reduce((s, e) => s + e.valorRepassar, 0),
+      totalIngressosPagos: extrato.reduce((s, e) => s + e.ingressosPagos, 0),
+      totalEventos: events.length,
+      extrato,
+    };
+  }
 
   async generateAttendancePdf(eventId: string, organizerId: string): Promise<Buffer> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
