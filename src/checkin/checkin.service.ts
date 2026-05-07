@@ -6,6 +6,8 @@ import { Event } from '../events/event.entity';
 import { CheckinByCpfDto } from './dto/checkin-by-cpf.dto';
 import { CheckinByNameDto } from './dto/checkin-by-name.dto';
 import { ManualCheckinLog, CheckinMethod } from './manual-checkin-log.entity';
+import { WebhooksService } from '../webhooks/webhooks.service';
+import { WebhookEventType } from '../webhooks/webhook-endpoint.entity';
 
 @Injectable()
 export class CheckinService {
@@ -16,6 +18,7 @@ export class CheckinService {
     private readonly eventRepo: Repository<Event>,
     @InjectRepository(ManualCheckinLog)
     private readonly checkinLogRepo: Repository<ManualCheckinLog>,
+    private readonly webhooksService: WebhooksService,
   ) {}
 
   async checkin(token: string): Promise<Participant> {
@@ -35,6 +38,8 @@ export class CheckinService {
     await this.checkinLogRepo.save(
       this.checkinLogRepo.create({ eventId: saved.eventId, participantId: saved.id, operatorId: null, method: CheckinMethod.QR, reason: null }),
     );
+    const event = await this.eventRepo.findOne({ where: { id: saved.eventId } });
+    if (event) setImmediate(() => void this.webhooksService.dispatch(event.organizerId, WebhookEventType.PARTICIPANT_CHECKED_IN, { participant: saved, method: 'QR' }));
     return saved;
   }
 
