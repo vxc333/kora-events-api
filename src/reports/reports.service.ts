@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Event } from '../events/event.entity';
 import { Participant, ParticipantStatus } from '../participants/participant.entity';
 import { Ticket } from '../tickets/ticket.entity';
@@ -118,5 +118,15 @@ export class ReportsService {
 
     const doc = pdfmake.createPdf(docDefinition);
     return doc.getBuffer();
+  }
+
+  async getExceptions(eventId: string, organizerId: string): Promise<Participant[]> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    return this.participantRepo.find({
+      where: { eventId, status: ParticipantStatus.CONFIRMED, checkedInAt: IsNull() },
+      order: { name: 'ASC' },
+      relations: ['ticket'],
+    });
   }
 }

@@ -24,4 +24,13 @@ export class ReportsController {
     res.set('Content-Disposition', `attachment; filename="relatorio-presenca-${eventId}.pdf"`);
     res.send(buffer);
   }
+
+  @Get('exceptions')
+  @ApiOperation({ summary: 'Participantes confirmados sem check-in (relatório de exceções)' })
+  getExceptions(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser('id') organizerId: string,
+  ) {
+    return this.reportsService.getExceptions(eventId, organizerId);
+  }
 }
