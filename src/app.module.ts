@@ -24,6 +24,7 @@ import { EventMembersModule } from './event-members/event-members.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { TicketTransfersModule } from './ticket-transfers/ticket-transfers.module';
 import { EventSessionsModule } from './event-sessions/event-sessions.module';
+import { WhiteLabelModule } from './white-label/white-label.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { EventSessionsModule } from './event-sessions/event-sessions.module';
     WebhooksModule,
     TicketTransfersModule,
     EventSessionsModule,
+    WhiteLabelModule,
   ],
   controllers: [AppController],
   providers: [AppService],
