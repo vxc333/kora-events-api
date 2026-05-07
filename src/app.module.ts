@@ -21,6 +21,9 @@ import { RegistrationFieldsModule } from './registration-fields/registration-fie
 import { BroadcastsModule } from './broadcasts/broadcasts.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EventMembersModule } from './event-members/event-members.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { TicketTransfersModule } from './ticket-transfers/ticket-transfers.module';
+import { EventSessionsModule } from './event-sessions/event-sessions.module';
 
 @Module({
   imports: [
@@ -59,6 +62,9 @@ import { EventMembersModule } from './event-members/event-members.module';
     BroadcastsModule,
     NotificationsModule,
     EventMembersModule,
+    WebhooksModule,
+    TicketTransfersModule,
+    EventSessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
