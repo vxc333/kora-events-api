@@ -19,6 +19,8 @@ import { CertificateSignersModule } from './certificate-signers/certificate-sign
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { RegistrationFieldsModule } from './registration-fields/registration-fields.module';
 import { BroadcastsModule } from './broadcasts/broadcasts.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { EventMembersModule } from './event-members/event-members.module';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { BroadcastsModule } from './broadcasts/broadcasts.module';
     WaitlistModule,
     RegistrationFieldsModule,
     BroadcastsModule,
+    NotificationsModule,
+    EventMembersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
