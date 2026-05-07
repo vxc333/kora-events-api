@@ -6,6 +6,7 @@ import * as path from 'path';
 import { Participant } from '../participants/participant.entity';
 import { Event } from '../events/event.entity';
 import { Ticket } from '../tickets/ticket.entity';
+import { WaitlistEntry } from '../waitlist/waitlist-entry.entity';
 
 @Injectable()
 export class MailService {
@@ -126,6 +127,43 @@ export class MailService {
       to: participant.email,
       subject: `Inscrição cancelada — ${event.title}`,
       html,
+    });
+  }
+
+  async sendWaitlistNotification(
+    entry: WaitlistEntry,
+    event: Event,
+    ticket: Ticket,
+  ): Promise<void> {
+    const claimUrl = `${this.config.get('FRONTEND_URL')}/e/${event.slug}?claimToken=${entry.claimToken}`;
+
+    const html = `
+    <p>Olá, <strong>${entry.name}</strong>!</p>
+    <p>Uma vaga surgiu para o ingresso <strong>${ticket.name}</strong> no evento <strong>${event.title}</strong>.</p>
+    <p>Você tem <strong>24 horas</strong> para garantir sua vaga:</p>
+    <p><a href="${claimUrl}">Garantir minha vaga</a></p>
+    <p>Após esse prazo, a vaga será oferecida ao próximo da fila.</p>
+  `;
+
+    await this.transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM'),
+      to: entry.email,
+      subject: `Vaga disponível — ${event.title}`,
+      html,
+    });
+  }
+
+  async sendBroadcast(
+    email: string,
+    name: string,
+    subject: string,
+    htmlBody: string,
+  ): Promise<void> {
+    await this.transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM'),
+      to: email,
+      subject,
+      html: htmlBody,
     });
   }
 }

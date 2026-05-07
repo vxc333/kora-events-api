@@ -4,7 +4,9 @@ import { Repository } from 'typeorm';
 import { ConflictException, HttpException, NotFoundException } from '@nestjs/common';
 import { ParticipantsService } from './participants.service';
 import { Participant, ParticipantStatus } from './participant.entity';
-import { Ticket } from '../tickets/ticket.entity';
+import { Ticket, TicketType } from '../tickets/ticket.entity';
+import { WaitlistService } from '../waitlist/waitlist.service';
+import { RegistrationFieldsService } from '../registration-fields/registration-fields.service';
 import { Coupon, DiscountType } from '../coupons/coupon.entity';
 import { CouponUsage } from '../coupons/coupon-usage.entity';
 import { MailService } from '../mail/mail.service';
@@ -14,6 +16,8 @@ const mockTicket: Ticket = {
   id: 'tkt-uuid-1', name: 'Ingresso Padrão', description: null, price: 0,
   currency: 'BRL', quantity: 10, quantitySold: 5, isActive: true,
   salesStartDate: null, salesEndDate: null, isHalfPrice: false,
+  feePassthrough: false, ticketType: TicketType.STANDARD,
+  waitlistEnabled: false, waitlistHoldsSpot: false,
   discountCode: null, discountPercentage: null, eventId: 'evt-uuid-1',
   event: {} as never, createdAt: new Date(), updatedAt: new Date(),
 };
@@ -74,6 +78,19 @@ describe('ParticipantsService', () => {
             sendRegistrationConfirmation: jest.fn().mockResolvedValue(undefined),
             sendCancellation: jest.fn().mockResolvedValue(undefined),
             sendCertificateReleased: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: WaitlistService,
+          useValue: { notifyNext: jest.fn(), validateClaimToken: jest.fn(), markClaimed: jest.fn() },
+        },
+        {
+          provide: RegistrationFieldsService,
+          useValue: {
+            validateResponses: jest.fn().mockResolvedValue(undefined),
+            saveResponses: jest.fn().mockResolvedValue(undefined),
+            findByEvent: jest.fn().mockResolvedValue([]),
+            getResponsesByParticipantIds: jest.fn().mockResolvedValue(new Map()),
           },
         },
       ],

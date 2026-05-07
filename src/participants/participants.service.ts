@@ -17,6 +17,8 @@ import { RegisterParticipantDto } from './dto/register-participant.dto';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { ListParticipantsDto } from './dto/list-participants.dto';
 import { MailService } from '../mail/mail.service';
+import { WaitlistService } from '../waitlist/waitlist.service';
+import { RegistrationFieldsService } from '../registration-fields/registration-fields.service';
 
 @Injectable()
 export class ParticipantsService {
@@ -32,6 +34,8 @@ export class ParticipantsService {
     @InjectRepository(Event)
     private readonly eventRepo: Repository<Event>,
     private readonly mailService: MailService,
+    private readonly waitlistService: WaitlistService,
+    private readonly registrationFieldsService: RegistrationFieldsService,
   ) {}
 
   async register(eventId: string, dto: RegisterParticipantDto): Promise<Participant> {
@@ -40,13 +44,20 @@ export class ParticipantsService {
       throw new ConflictException({ message: 'Participante já inscrito neste evento', code: 'PARTICIPANT_ALREADY_REGISTERED' });
     }
 
+    let isHoldClaim = false;
+
+    if (dto.claimToken) {
+      const { holdsSpot } = await this.waitlistService.validateClaimToken(dto.claimToken, dto.ticketId);
+      isHoldClaim = holdsSpot;
+    }
+
     let ticket: Ticket | null = null;
 
     if (dto.ticketId) {
       ticket = await this.ticketRepo.findOne({ where: { id: dto.ticketId, eventId } });
       if (!ticket) throw new NotFoundException('Ingresso não encontrado');
 
-      if (ticket.quantity !== null && ticket.quantitySold >= ticket.quantity) {
+      if (!isHoldClaim && ticket.quantity !== null && ticket.quantitySold >= ticket.quantity) {
         throw new HttpException(
           { message: 'Ingresso esgotado', code: 'TICKET_SOLD_OUT' },
           HttpStatus.CONFLICT,
@@ -81,6 +92,12 @@ export class ParticipantsService {
       couponId = coupon.id;
     }
 
+    await this.registrationFieldsService.validateResponses(
+      eventId,
+      dto.ticketId ?? null,
+      dto.responses ?? [],
+    );
+
     const participant = this.participantRepo.create({
       eventId,
       name: dto.name,
@@ -93,6 +110,14 @@ export class ParticipantsService {
     });
 
     const saved = await this.participantRepo.save(participant);
+
+    if (dto.responses?.length) {
+      await this.registrationFieldsService.saveResponses(saved.id, dto.responses);
+    }
+
+    if (dto.claimToken) {
+      try { await this.waitlistService.markClaimed(dto.claimToken); } catch { /* ignore */ }
+    }
 
     if (couponId) {
       await this.couponUsageRepo.save(
@@ -168,9 +193,15 @@ export class ParticipantsService {
 
     if (participant.ticketId) {
       const ticket = await this.ticketRepo.findOne({ where: { id: participant.ticketId } });
-      if (ticket && ticket.quantitySold > 0) {
-        ticket.quantitySold -= 1;
-        await this.ticketRepo.save(ticket);
+      if (ticket) {
+        const shouldDecrementNow = !ticket.waitlistEnabled || !ticket.waitlistHoldsSpot;
+        if (shouldDecrementNow && ticket.quantitySold > 0) {
+          ticket.quantitySold -= 1;
+          await this.ticketRepo.save(ticket);
+        }
+        if (ticket.waitlistEnabled) {
+          try { await this.waitlistService.notifyNext(ticket.id); } catch { /* ignore */ }
+        }
       }
     }
 
@@ -189,11 +220,17 @@ export class ParticipantsService {
     const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
     if (!event) throw new NotFoundException('Evento não encontrado');
 
-    const participants = await this.participantRepo.find({
-      where: { eventId },
-      order: { registeredAt: 'ASC' },
-      relations: ['ticket'],
-    });
+    const [participants, fields] = await Promise.all([
+      this.participantRepo.find({
+        where: { eventId },
+        order: { registeredAt: 'ASC' },
+        relations: ['ticket'],
+      }),
+      this.registrationFieldsService.findByEvent(eventId, userId),
+    ]);
+
+    const participantIds = participants.map((p) => p.id);
+    const responseMap = await this.registrationFieldsService.getResponsesByParticipantIds(participantIds);
 
     const escape = (v: string | null | undefined) => {
       if (v == null) return '';
@@ -201,9 +238,23 @@ export class ParticipantsService {
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
-    const header = 'Nome,Email,CPF,Telefone,Ingresso,Status,Check-in';
-    const rows = participants.map((p) =>
-      [
+    const dynamicHeaders = fields.map((f) => escape(f.label));
+    const header = ['Nome', 'Email', 'CPF', 'Telefone', 'Ingresso', 'Status', 'Check-in', ...dynamicHeaders].join(',');
+
+    const rows = participants.map((p) => {
+      const responses = responseMap.get(p.id) ?? new Map<string, string>();
+      const dynamicCols = fields.map((f) => {
+        const val = responses.get(f.id) ?? '';
+        if (f.type === 'CHECKBOX') {
+          try {
+            const arr = JSON.parse(val) as string[];
+            return escape(arr.join('|'));
+          } catch { return escape(val); }
+        }
+        return escape(val);
+      });
+
+      return [
         escape(p.name),
         escape(p.email),
         escape(p.cpf),
@@ -211,8 +262,9 @@ export class ParticipantsService {
         escape(p.ticket?.name ?? null),
         escape(p.status),
         escape(p.checkedInAt ? p.checkedInAt.toLocaleString('pt-BR') : null),
-      ].join(','),
-    );
+        ...dynamicCols,
+      ].join(',');
+    });
 
     return [header, ...rows].join('\n');
   }

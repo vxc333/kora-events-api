@@ -1,6 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { IsCpf } from '../../common/validators/is-cpf.validator';
+
+export class FieldResponseDto {
+  @IsUUID()
+  @IsString()
+  fieldId: string;
+
+  @IsString()
+  value: string;
+}
 
 export class RegisterParticipantDto {
   @ApiProperty({ example: 'João da Silva' })
@@ -31,4 +41,16 @@ export class RegisterParticipantDto {
   @IsOptional()
   @IsString()
   couponCode?: string;
+
+  @ApiPropertyOptional({ description: 'Token de claim da lista de espera' })
+  @IsOptional()
+  @IsString()
+  claimToken?: string;
+
+  @ApiPropertyOptional({ type: [FieldResponseDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FieldResponseDto)
+  responses?: FieldResponseDto[];
 }
