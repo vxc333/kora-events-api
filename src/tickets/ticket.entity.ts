@@ -9,6 +9,11 @@ import {
 } from 'typeorm';
 import { Event } from '../events/event.entity';
 
+export enum TicketType {
+  STANDARD   = 'STANDARD',
+  EARLY_BIRD = 'EARLY_BIRD',
+}
+
 @Entity('tickets')
 export class Ticket {
   @PrimaryGeneratedColumn('uuid')
@@ -44,8 +49,21 @@ export class Ticket {
   @Column({ default: false })
   isHalfPrice: boolean;
 
+  @Column({
+    type: 'enum',
+    enum: TicketType,
+    default: TicketType.STANDARD,
+  })
+  ticketType: TicketType;
+
   @Column({ default: false })
   feePassthrough: boolean;
+
+  @Column({ default: false })
+  waitlistEnabled: boolean;
+
+  @Column({ default: false })
+  waitlistHoldsSpot: boolean;
 
   @Column({ nullable: true, type: 'varchar' })
   discountCode: string | null;

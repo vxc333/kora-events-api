@@ -2,12 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
   Min,
 } from 'class-validator';
+import { TicketType } from '../ticket.entity';
 
 export class CreateTicketDto {
   @ApiProperty({ example: 'Ingresso Padrão' })
@@ -70,4 +72,19 @@ export class CreateTicketDto {
   @IsNumber()
   @Min(0)
   discountPercentage?: number;
+
+  @ApiPropertyOptional({ enum: TicketType, default: TicketType.STANDARD })
+  @IsOptional()
+  @IsEnum(TicketType)
+  ticketType?: TicketType;
+
+  @ApiPropertyOptional({ default: false, description: 'Habilita lista de espera para este ingresso' })
+  @IsOptional()
+  @IsBoolean()
+  waitlistEnabled?: boolean;
+
+  @ApiPropertyOptional({ default: false, description: 'Reserva a vaga durante o TTL de 24h' })
+  @IsOptional()
+  @IsBoolean()
+  waitlistHoldsSpot?: boolean;
 }

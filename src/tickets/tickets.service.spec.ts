@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BadRequestException, HttpException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
-import { Ticket } from './ticket.entity';
+import { Ticket, TicketType } from './ticket.entity';
 
 const mockTicket: Ticket = {
   id: 'tkt-uuid-1',
@@ -17,6 +17,10 @@ const mockTicket: Ticket = {
   salesStartDate: null,
   salesEndDate: null,
   isHalfPrice: false,
+  feePassthrough: false,
+  ticketType: TicketType.STANDARD,
+  waitlistEnabled: false,
+  waitlistHoldsSpot: false,
   discountCode: null,
   discountPercentage: null,
   eventId: 'evt-uuid-1',
@@ -51,25 +55,56 @@ describe('TicketsService', () => {
   });
 
   describe('create', () => {
-    it('should throw 501 when price > 0 (paid ticket)', async () => {
-      await expect(
-        service.create('evt-uuid-1', { name: 'VIP', price: 99.9 }),
-      ).rejects.toThrow(HttpException);
-
-      try {
-        await service.create('evt-uuid-1', { name: 'VIP', price: 99.9 });
-      } catch (e: unknown) {
-        expect((e as HttpException).getStatus()).toBe(501);
-        expect((e as HttpException).message).toContain('Pagamentos serão implementados em breve');
-      }
-    });
-
     it('should create a free ticket successfully', async () => {
       repo.create.mockReturnValue({ ...mockTicket });
       repo.save.mockResolvedValue({ ...mockTicket });
       const result = await service.create('evt-uuid-1', { name: 'Ingresso Padrão', price: 0 });
       expect(repo.save).toHaveBeenCalled();
       expect(result.price).toBe(0);
+    });
+
+    it('should create a paid ticket successfully', async () => {
+      repo.create.mockReturnValue({ ...mockTicket, price: 99.9 });
+      repo.save.mockResolvedValue({ ...mockTicket, price: 99.9 });
+      const result = await service.create('evt-uuid-1', { name: 'VIP', price: 99.9 });
+      expect(repo.save).toHaveBeenCalled();
+      expect(result.price).toBe(99.9);
+    });
+
+    it('should throw BadRequestException when creating EARLY_BIRD without salesEndDate', async () => {
+      await expect(
+        service.create('evt-uuid-1', {
+          name: 'Early Bird',
+          price: 0,
+          ticketType: TicketType.EARLY_BIRD,
+          salesEndDate: undefined,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should create EARLY_BIRD successfully when salesEndDate is provided', async () => {
+      const earlyBird = {
+        ...mockTicket,
+        ticketType: TicketType.EARLY_BIRD,
+        salesEndDate: new Date('2026-06-01'),
+      };
+      repo.create.mockReturnValue(earlyBird);
+      repo.save.mockResolvedValue(earlyBird);
+      const result = await service.create('evt-uuid-1', {
+        name: 'Early Bird',
+        price: 0,
+        ticketType: TicketType.EARLY_BIRD,
+        salesEndDate: '2026-06-01T00:00:00.000Z',
+      });
+      expect(result.ticketType).toBe(TicketType.EARLY_BIRD);
+    });
+
+    it('should throw BadRequestException when updating ticket type to EARLY_BIRD without salesEndDate', async () => {
+      const ticketWithoutEnd = { ...mockTicket, salesEndDate: null };
+      repo.findOne.mockResolvedValue(ticketWithoutEnd);
+      await expect(
+        service.update('evt-uuid-1', 'tkt-uuid-1', { ticketType: TicketType.EARLY_BIRD }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

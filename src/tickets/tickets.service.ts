@@ -1,13 +1,11 @@
 import {
   BadRequestException,
-  HttpException,
-  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Ticket } from './ticket.entity';
+import { Ticket, TicketType } from './ticket.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 
@@ -19,12 +17,7 @@ export class TicketsService {
   ) {}
 
   async create(eventId: string, dto: CreateTicketDto): Promise<Ticket> {
-    if (dto.price > 0) {
-      throw new HttpException(
-        'Pagamentos serão implementados em breve. Por enquanto, apenas ingressos gratuitos estão disponíveis.',
-        HttpStatus.NOT_IMPLEMENTED,
-      );
-    }
+    this.validateEarlyBird(dto.ticketType, dto.salesEndDate);
 
     const ticket = this.ticketRepo.create({
       ...dto,
@@ -86,6 +79,9 @@ export class TicketsService {
 
   async update(eventId: string, ticketId: string, dto: UpdateTicketDto): Promise<Ticket> {
     const ticket = await this.findTicketForEvent(eventId, ticketId);
+    const resolvedType = dto.ticketType ?? ticket.ticketType;
+    const resolvedEnd  = dto.salesEndDate !== undefined ? dto.salesEndDate : ticket.salesEndDate?.toISOString();
+    this.validateEarlyBird(resolvedType, resolvedEnd);
     const updated = Object.assign(ticket, {
       ...dto,
       ...(dto.salesStartDate ? { salesStartDate: new Date(dto.salesStartDate) } : {}),
@@ -102,5 +98,14 @@ export class TicketsService {
       );
     }
     await this.ticketRepo.remove(ticket);
+  }
+
+  private validateEarlyBird(
+    ticketType: TicketType | undefined,
+    salesEndDate: string | Date | null | undefined,
+  ): void {
+    if (ticketType === TicketType.EARLY_BIRD && !salesEndDate) {
+      throw new BadRequestException('Ingresso early bird deve ter salesEndDate definido');
+    }
   }
 }
