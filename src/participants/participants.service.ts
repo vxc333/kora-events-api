@@ -21,6 +21,8 @@ import { WaitlistService } from '../waitlist/waitlist.service';
 import { RegistrationFieldsService } from '../registration-fields/registration-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.entity';
+import { WebhooksService } from '../webhooks/webhooks.service';
+import { WebhookEventType } from '../webhooks/webhook-endpoint.entity';
 
 @Injectable()
 export class ParticipantsService {
@@ -39,6 +41,7 @@ export class ParticipantsService {
     private readonly waitlistService: WaitlistService,
     private readonly registrationFieldsService: RegistrationFieldsService,
     private readonly notificationsService: NotificationsService,
+    private readonly webhooksService: WebhooksService,
   ) {}
 
   async register(eventId: string, dto: RegisterParticipantDto): Promise<Participant> {
@@ -133,6 +136,7 @@ export class ParticipantsService {
       if (event) {
         await this.mailService.sendRegistrationConfirmation(saved, event, ticket);
         await this.notificationsService.create(saved.id, eventId, NotificationType.CONFIRMATION, `Inscrição confirmada — ${event.title}`);
+        setImmediate(() => void this.webhooksService.dispatch(event.organizerId, WebhookEventType.PARTICIPANT_REGISTERED, { participant: saved, event: { id: event.id, title: event.title, slug: event.slug } }));
       }
     } catch { /* silently ignore email errors */ }
 
@@ -222,6 +226,7 @@ export class ParticipantsService {
       if (event) {
         await this.mailService.sendCancellation(cancelled, event);
         await this.notificationsService.create(cancelled.id, eventId, NotificationType.CANCELLATION, `Inscrição cancelada — ${event.title}`);
+        setImmediate(() => void this.webhooksService.dispatch(event.organizerId, WebhookEventType.PARTICIPANT_CANCELLED, { participant: cancelled }));
       }
     } catch { /* silently ignore email errors */ }
 
@@ -323,6 +328,7 @@ export class ParticipantsService {
     try {
       await this.mailService.sendApprovalApproved(saved, event);
       await this.notificationsService.create(saved.id, eventId, NotificationType.APPROVAL_APPROVED, `Inscrição aprovada — ${event.title}`);
+      setImmediate(() => void this.webhooksService.dispatch(event.organizerId, WebhookEventType.PARTICIPANT_APPROVED, { participant: saved }));
     } catch { /* ignore */ }
     return saved;
   }
@@ -342,6 +348,7 @@ export class ParticipantsService {
     try {
       await this.mailService.sendApprovalRejected(saved, event, reason);
       await this.notificationsService.create(saved.id, eventId, NotificationType.APPROVAL_REJECTED, `Inscrição não aprovada — ${event.title}`, reason);
+      setImmediate(() => void this.webhooksService.dispatch(event.organizerId, WebhookEventType.PARTICIPANT_REJECTED, { participant: saved, reason }));
     } catch { /* ignore */ }
     return saved;
   }

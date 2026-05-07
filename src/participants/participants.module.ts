@@ -11,6 +11,7 @@ import { MailModule } from '../mail/mail.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { RegistrationFieldsModule } from '../registration-fields/registration-fields.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     WaitlistModule,
     RegistrationFieldsModule,
     NotificationsModule,
+    WebhooksModule,
   ],
   controllers: [ParticipantsController],
   providers: [ParticipantsService],

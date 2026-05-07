@@ -178,6 +178,22 @@ export class MailService {
     });
   }
 
+  async sendTransferInvite(
+    toEmail: string,
+    toName: string,
+    fromName: string,
+    event: Event,
+    acceptUrl: string,
+  ): Promise<void> {
+    const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2>Você recebeu uma transferência de ingresso!</h2><p>Olá, <strong>${toName}</strong>!</p><p><strong>${fromName}</strong> transferiu o ingresso para o evento <strong>${event.title}</strong> para você.</p><p>Data: ${this.formatDate(event.startDate)} às ${event.startTime}</p><p>Clique no botão abaixo para aceitar a transferência. O link expira em 24 horas.</p><p><a href="${acceptUrl}" style="background:#6366f1;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block">Aceitar ingresso</a></p></div>`;
+    await this.transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM'),
+      to: toEmail,
+      subject: `Transferência de ingresso — ${event.title}`,
+      html,
+    });
+  }
+
   async sendApprovalRejected(participant: Participant, event: Event, reason?: string): Promise<void> {
     const reasonHtml = reason ? `<p>Motivo: ${reason}</p>` : '';
     const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2>Inscrição não aprovada</h2><p>Olá, <strong>${participant.name}</strong>!</p><p>Infelizmente sua inscrição no evento <strong>${event.title}</strong> não foi aprovada.</p>${reasonHtml}<p>Em caso de dúvidas, entre em contato com o organizador.</p></div>`;
