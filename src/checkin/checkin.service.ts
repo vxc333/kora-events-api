@@ -5,6 +5,7 @@ import { Participant, ParticipantStatus } from '../participants/participant.enti
 import { Event } from '../events/event.entity';
 import { CheckinByCpfDto } from './dto/checkin-by-cpf.dto';
 import { CheckinByNameDto } from './dto/checkin-by-name.dto';
+import { ManualCheckinLog, CheckinMethod } from './manual-checkin-log.entity';
 
 @Injectable()
 export class CheckinService {
@@ -13,6 +14,8 @@ export class CheckinService {
     private readonly participantRepo: Repository<Participant>,
     @InjectRepository(Event)
     private readonly eventRepo: Repository<Event>,
+    @InjectRepository(ManualCheckinLog)
+    private readonly checkinLogRepo: Repository<ManualCheckinLog>,
   ) {}
 
   async checkin(token: string): Promise<Participant> {
@@ -28,7 +31,11 @@ export class CheckinService {
     }
 
     participant.checkedInAt = new Date();
-    return this.participantRepo.save(participant);
+    const saved = await this.participantRepo.save(participant);
+    await this.checkinLogRepo.save(
+      this.checkinLogRepo.create({ eventId: saved.eventId, participantId: saved.id, operatorId: null, method: CheckinMethod.QR, reason: null }),
+    );
+    return saved;
   }
 
   async checkinByCpf(dto: CheckinByCpfDto, operatorId: string): Promise<Participant> {
@@ -55,7 +62,11 @@ export class CheckinService {
     }
 
     participant.checkedInAt = new Date();
-    return this.participantRepo.save(participant);
+    const savedByCpf = await this.participantRepo.save(participant);
+    await this.checkinLogRepo.save(
+      this.checkinLogRepo.create({ eventId: savedByCpf.eventId, participantId: savedByCpf.id, operatorId, method: CheckinMethod.CPF, reason: null }),
+    );
+    return savedByCpf;
   }
 
   async checkinByName(dto: CheckinByNameDto, operatorId: string): Promise<Participant> {
@@ -80,7 +91,11 @@ export class CheckinService {
     }
 
     participant.checkedInAt = new Date();
-    return this.participantRepo.save(participant);
+    const savedByName = await this.participantRepo.save(participant);
+    await this.checkinLogRepo.save(
+      this.checkinLogRepo.create({ eventId: savedByName.eventId, participantId: savedByName.id, operatorId, method: CheckinMethod.NAME, reason: null }),
+    );
+    return savedByName;
   }
 
   async getStats(
@@ -99,5 +114,15 @@ export class CheckinService {
     });
 
     return { total, checkedIn, pending: total - checkedIn };
+  }
+
+  async getAuditLog(eventId: string, userId: string): Promise<ManualCheckinLog[]> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    return this.checkinLogRepo.find({
+      where: { eventId },
+      order: { createdAt: 'DESC' },
+      relations: ['participant', 'operator'],
+    });
   }
 }

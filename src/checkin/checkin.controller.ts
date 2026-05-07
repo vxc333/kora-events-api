@@ -59,4 +59,15 @@ export class CheckinController {
   ) {
     return this.checkinService.getStats(eventId, user.id);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('events/:eventId/checkin/audit-log')
+  @ApiOperation({ summary: 'Log auditável de check-ins do evento (modo secretaria)' })
+  getAuditLog(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.checkinService.getAuditLog(eventId, user.id);
+  }
 }

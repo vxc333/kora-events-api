@@ -4,9 +4,10 @@ import { CheckinController } from './checkin.controller';
 import { CheckinService } from './checkin.service';
 import { Participant } from '../participants/participant.entity';
 import { Event } from '../events/event.entity';
+import { ManualCheckinLog } from './manual-checkin-log.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Participant, Event])],
+  imports: [TypeOrmModule.forFeature([Participant, Event, ManualCheckinLog])],
   controllers: [CheckinController],
   providers: [CheckinService],
 })
