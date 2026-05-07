@@ -31,6 +31,7 @@ import { ParticipantsService } from './participants.service';
 import { RegisterParticipantDto } from './dto/register-participant.dto';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
 import { ListParticipantsDto } from './dto/list-participants.dto';
+import { RejectParticipantDto } from './dto/reject-participant.dto';
 
 @ApiTags('Participants')
 @Controller('events/:eventId/participants')
@@ -134,5 +135,47 @@ export class ParticipantsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.participantsService.cancel(eventId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprovar inscrição pendente (requer requiresApproval no evento)' })
+  approve(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.participantsService.approve(eventId, id, user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rejeitar inscrição pendente' })
+  reject(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectParticipantDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.participantsService.reject(eventId, id, user.id, dto.reason);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('export-institutional')
+  @ApiOperation({ summary: 'Exportar lista institucional CSV (modo secretaria)' })
+  async exportInstitutional(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const csv = await this.participantsService.exportInstitutional(eventId, user.id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="lista-institucional-${eventId}.csv"`);
+    res.send('﻿' + csv);
   }
 }

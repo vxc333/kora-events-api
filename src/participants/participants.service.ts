@@ -19,6 +19,8 @@ import { ListParticipantsDto } from './dto/list-participants.dto';
 import { MailService } from '../mail/mail.service';
 import { WaitlistService } from '../waitlist/waitlist.service';
 import { RegistrationFieldsService } from '../registration-fields/registration-fields.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.entity';
 
 @Injectable()
 export class ParticipantsService {
@@ -36,6 +38,7 @@ export class ParticipantsService {
     private readonly mailService: MailService,
     private readonly waitlistService: WaitlistService,
     private readonly registrationFieldsService: RegistrationFieldsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async register(eventId: string, dto: RegisterParticipantDto): Promise<Participant> {
@@ -127,7 +130,10 @@ export class ParticipantsService {
 
     try {
       const event = await this.eventRepo.findOne({ where: { id: eventId } });
-      if (event) await this.mailService.sendRegistrationConfirmation(saved, event, ticket);
+      if (event) {
+        await this.mailService.sendRegistrationConfirmation(saved, event, ticket);
+        await this.notificationsService.create(saved.id, eventId, NotificationType.CONFIRMATION, `Inscrição confirmada — ${event.title}`);
+      }
     } catch { /* silently ignore email errors */ }
 
     return saved;
@@ -180,7 +186,10 @@ export class ParticipantsService {
     if (dto.certificateReleased && !wasCertReleased) {
       try {
         const event = await this.eventRepo.findOne({ where: { id: updated.eventId } });
-        if (event) await this.mailService.sendCertificateReleased(updated, event);
+        if (event) {
+          await this.mailService.sendCertificateReleased(updated, event);
+          await this.notificationsService.create(updated.id, updated.eventId, NotificationType.CERTIFICATE, `Certificado disponível — ${event.title}`);
+        }
       } catch { /* silently ignore email errors */ }
     }
 
@@ -210,7 +219,10 @@ export class ParticipantsService {
 
     try {
       const event = await this.eventRepo.findOne({ where: { id: eventId } });
-      if (event) await this.mailService.sendCancellation(cancelled, event);
+      if (event) {
+        await this.mailService.sendCancellation(cancelled, event);
+        await this.notificationsService.create(cancelled.id, eventId, NotificationType.CANCELLATION, `Inscrição cancelada — ${event.title}`);
+      }
     } catch { /* silently ignore email errors */ }
 
     return cancelled;
@@ -294,5 +306,71 @@ export class ParticipantsService {
     }
 
     return { imported, failed };
+  }
+
+  async approve(eventId: string, participantId: string, userId: string): Promise<Participant> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    const participant = await this.findOne(eventId, participantId);
+    if (participant.status !== ParticipantStatus.PENDING) {
+      throw new HttpException(
+        { message: 'Participante não está pendente de aprovação', code: 'PARTICIPANT_NOT_PENDING' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    participant.status = ParticipantStatus.CONFIRMED;
+    const saved = await this.participantRepo.save(participant);
+    try {
+      await this.mailService.sendApprovalApproved(saved, event);
+      await this.notificationsService.create(saved.id, eventId, NotificationType.APPROVAL_APPROVED, `Inscrição aprovada — ${event.title}`);
+    } catch { /* ignore */ }
+    return saved;
+  }
+
+  async reject(eventId: string, participantId: string, userId: string, reason?: string): Promise<Participant> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    const participant = await this.findOne(eventId, participantId);
+    if (participant.status !== ParticipantStatus.PENDING) {
+      throw new HttpException(
+        { message: 'Participante não está pendente de aprovação', code: 'PARTICIPANT_NOT_PENDING' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    participant.status = ParticipantStatus.CANCELLED;
+    const saved = await this.participantRepo.save(participant);
+    try {
+      await this.mailService.sendApprovalRejected(saved, event, reason);
+      await this.notificationsService.create(saved.id, eventId, NotificationType.APPROVAL_REJECTED, `Inscrição não aprovada — ${event.title}`, reason);
+    } catch { /* ignore */ }
+    return saved;
+  }
+
+  async exportInstitutional(eventId: string, userId: string): Promise<string> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId, organizerId: userId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    const participants = await this.participantRepo.find({
+      where: { eventId },
+      order: { name: 'ASC' },
+      relations: ['ticket'],
+    });
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ['Nº Ordem', 'Nome Completo', 'CPF', 'Email', 'Telefone', 'Tipo de Ingresso', 'Situação', 'Presença Confirmada', 'Data/Hora Check-in'].join(',');
+    const rows = participants.map((p, i) => [
+      String(i + 1),
+      escape(p.name),
+      escape(p.cpf),
+      escape(p.email),
+      escape(p.phone),
+      escape(p.ticket?.name ?? 'Gratuito'),
+      escape(p.status),
+      p.checkedInAt ? 'Sim' : 'Não',
+      escape(p.checkedInAt ? p.checkedInAt.toLocaleString('pt-BR') : null),
+    ].join(','));
+    return [header, ...rows].join('\n');
   }
 }

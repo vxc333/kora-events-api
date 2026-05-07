@@ -10,6 +10,7 @@ import { Event } from '../events/event.entity';
 import { MailModule } from '../mail/mail.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { RegistrationFieldsModule } from '../registration-fields/registration-fields.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RegistrationFieldsModule } from '../registration-fields/registration-fi
     MailModule,
     WaitlistModule,
     RegistrationFieldsModule,
+    NotificationsModule,
   ],
   controllers: [ParticipantsController],
   providers: [ParticipantsService],
