@@ -166,4 +166,26 @@ export class MailService {
       html: htmlBody,
     });
   }
+
+  async sendApprovalApproved(participant: Participant, event: Event): Promise<void> {
+    const confirmationUrl = `${this.config.get('FRONTEND_URL')}/e/${event.slug}/confirmacao?email=${encodeURIComponent(participant.email)}`;
+    const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2>Inscrição aprovada!</h2><p>Olá, <strong>${participant.name}</strong>!</p><p>Sua inscrição no evento <strong>${event.title}</strong> foi <strong>aprovada</strong>.</p><p>Data: ${this.formatDate(event.startDate)} às ${event.startTime}</p><p>Local: ${event.location ?? 'Online'}</p><p><a href="${confirmationUrl}">Acessar minha inscrição</a></p></div>`;
+    await this.transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM'),
+      to: participant.email,
+      subject: `Inscrição aprovada — ${event.title}`,
+      html,
+    });
+  }
+
+  async sendApprovalRejected(participant: Participant, event: Event, reason?: string): Promise<void> {
+    const reasonHtml = reason ? `<p>Motivo: ${reason}</p>` : '';
+    const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto"><h2>Inscrição não aprovada</h2><p>Olá, <strong>${participant.name}</strong>!</p><p>Infelizmente sua inscrição no evento <strong>${event.title}</strong> não foi aprovada.</p>${reasonHtml}<p>Em caso de dúvidas, entre em contato com o organizador.</p></div>`;
+    await this.transporter.sendMail({
+      from: this.config.get<string>('SMTP_FROM'),
+      to: participant.email,
+      subject: `Inscrição não aprovada — ${event.title}`,
+      html,
+    });
+  }
 }
