@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ticket, TicketType } from './ticket.entity';
+import { User, UserPlan } from '../users/user.entity';
+import { Event } from '../events/event.entity';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 
@@ -14,9 +17,27 @@ export class TicketsService {
   constructor(
     @InjectRepository(Ticket)
     private readonly ticketRepo: Repository<Ticket>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Event)
+    private readonly eventRepo: Repository<Event>,
   ) {}
 
+  private async assertPaidTicketAllowed(eventId: string, price: number | undefined): Promise<void> {
+    if (!price || Number(price) <= 0) return;
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) return;
+    const organizer = await this.userRepo.findOne({ where: { id: event.organizerId } });
+    if (organizer && organizer.plan === UserPlan.FREE) {
+      throw new ForbiddenException({
+        message: 'Ingressos pagos requerem plano Pro. Faça upgrade para continuar.',
+        code: 'PLAN_UPGRADE_REQUIRED',
+      });
+    }
+  }
+
   async create(eventId: string, dto: CreateTicketDto): Promise<Ticket> {
+    await this.assertPaidTicketAllowed(eventId, dto.price);
     this.validateEarlyBird(dto.ticketType, dto.salesEndDate);
 
     const ticket = this.ticketRepo.create({
@@ -78,6 +99,7 @@ export class TicketsService {
   }
 
   async update(eventId: string, ticketId: string, dto: UpdateTicketDto): Promise<Ticket> {
+    await this.assertPaidTicketAllowed(eventId, dto.price);
     const ticket = await this.findTicketForEvent(eventId, ticketId);
     const resolvedType = dto.ticketType ?? ticket.ticketType;
     const resolvedEnd  = dto.salesEndDate !== undefined ? dto.salesEndDate : ticket.salesEndDate?.toISOString();
