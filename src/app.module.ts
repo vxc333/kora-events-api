@@ -16,6 +16,9 @@ import { EventPartnersModule } from './event-partners/event-partners.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { ReportsModule } from './reports/reports.module';
 import { CertificateSignersModule } from './certificate-signers/certificate-signers.module';
+import { WaitlistModule } from './waitlist/waitlist.module';
+import { RegistrationFieldsModule } from './registration-fields/registration-fields.module';
+import { BroadcastsModule } from './broadcasts/broadcasts.module';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { CertificateSignersModule } from './certificate-signers/certificate-sign
     CouponsModule,
     ReportsModule,
     CertificateSignersModule,
+    WaitlistModule,
+    RegistrationFieldsModule,
+    BroadcastsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
