@@ -10,5 +10,6 @@ import { CertificateSigner } from '../certificate-signers/certificate-signer.ent
   imports: [TypeOrmModule.forFeature([Participant, Event, CertificateSigner])],
   controllers: [CertificatesController],
   providers: [CertificatesService],
+  exports: [CertificatesService],
 })
 export class CertificatesModule {}
