@@ -4,6 +4,8 @@ import { IsNull, Repository } from 'typeorm';
 import { Event } from '../events/event.entity';
 import { Participant, ParticipantStatus } from '../participants/participant.entity';
 import { Ticket } from '../tickets/ticket.entity';
+import { EventSession } from '../event-sessions/event-session.entity';
+import { SessionCheckin } from '../event-sessions/session-checkin.entity';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfmake = require('pdfmake');
@@ -20,6 +22,10 @@ export class ReportsService {
     private readonly eventRepo: Repository<Event>,
     @InjectRepository(Participant)
     private readonly participantRepo: Repository<Participant>,
+    @InjectRepository(EventSession)
+    private readonly sessionRepo: Repository<EventSession>,
+    @InjectRepository(SessionCheckin)
+    private readonly sessionCheckinRepo: Repository<SessionCheckin>,
   ) {}
 
   async getFinancialSummary(organizerId: string) {
@@ -128,5 +134,68 @@ export class ReportsService {
       order: { name: 'ASC' },
       relations: ['ticket'],
     });
+  }
+
+  async getMinimumAttendance(eventId: string, organizerId: string) {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Evento não encontrado');
+    if (event.organizerId !== organizerId) throw new ForbiddenException();
+
+    const minimumPercentage = Number(event.minimumAttendancePercentage) || 75;
+
+    const [sessions, participants] = await Promise.all([
+      this.sessionRepo.find({ where: { eventId } }),
+      this.participantRepo.find({ where: { eventId }, order: { name: 'ASC' } }),
+    ]);
+
+    const totalSessions = sessions.length;
+
+    if (totalSessions === 0) {
+      // No sessions defined — all confirmed participants are eligible
+      const records = participants
+        .filter(p => p.status === ParticipantStatus.CONFIRMED)
+        .map(p => ({
+          participantId: p.id,
+          participantName: p.name,
+          participantEmail: p.email,
+          totalSessions: 0,
+          attendedSessions: 0,
+          percentage: 100,
+          certificateEligible: true,
+        }));
+      return { minimumPercentage, eligible: records.length, total: records.length, records };
+    }
+
+    const sessionIds = sessions.map(s => s.id);
+    const checkins = await this.sessionCheckinRepo
+      .createQueryBuilder('sc')
+      .where('sc.eventId = :eventId', { eventId })
+      .andWhere('sc.sessionId IN (:...sessionIds)', { sessionIds })
+      .getMany();
+
+    // Group checkins by participantId
+    const attendanceMap = new Map<string, number>();
+    for (const c of checkins) {
+      attendanceMap.set(c.participantId, (attendanceMap.get(c.participantId) ?? 0) + 1);
+    }
+
+    const records = participants
+      .filter(p => p.status === ParticipantStatus.CONFIRMED)
+      .map(p => {
+        const attended = attendanceMap.get(p.id) ?? 0;
+        const percentage = Math.round((attended / totalSessions) * 100);
+        return {
+          participantId: p.id,
+          participantName: p.name,
+          participantEmail: p.email,
+          totalSessions,
+          attendedSessions: attended,
+          percentage,
+          certificateEligible: percentage >= minimumPercentage,
+        };
+      });
+
+    const eligible = records.filter(r => r.certificateEligible).length;
+    return { minimumPercentage, eligible, total: records.length, records };
   }
 }
