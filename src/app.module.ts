@@ -26,6 +26,11 @@ import { TicketTransfersModule } from './ticket-transfers/ticket-transfers.modul
 import { EventSessionsModule } from './event-sessions/event-sessions.module';
 import { WhiteLabelModule } from './white-label/white-label.module';
 import { PushNotificationsModule } from './push-notifications/push-notifications.module';
+import { PortalModule } from './portal/portal.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { MarketplaceModule } from './marketplace/marketplace.module';
+import { NpsModule } from './nps/nps.module';
+import { CoursesModule } from './courses/courses.module';
 
 @Module({
   imports: [
@@ -69,6 +74,11 @@ import { PushNotificationsModule } from './push-notifications/push-notifications
     EventSessionsModule,
     WhiteLabelModule,
     PushNotificationsModule,
+    PortalModule,
+    AnalyticsModule,
+    MarketplaceModule,
+    NpsModule,
+    CoursesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
